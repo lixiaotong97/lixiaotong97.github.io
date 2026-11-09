@@ -1,0 +1,958 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dNaViT: Discrete Codes are General-Purpose Visual Representations</title>
+<meta name="description" content="dNaViT is a Discrete Native-resolution Vision Transformer whose shared discrete vocabulary supports understanding, reconstruction, generation, and editing.">
+<meta name="color-scheme" content="light">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script>
+  (function (r) {
+    r.className = r.className.replace('no-js', 'js');
+    var still = /[?&]motion=off\b/.test(location.search) ||
+      (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+    r.classList.add(still ? 'still' : 'motion');
+  })(document.documentElement);
+</script>
+<style>
+:root {
+  --bg: #ffffff;
+  --ink: rgba(0, 0, 0, .9);
+  --ink-2: rgba(0, 0, 0, .62);
+  --ink-3: rgba(0, 0, 0, .42);
+  --line: rgba(0, 0, 0, .08);
+  --line-2: rgba(0, 0, 0, .14);
+  --soft: #f6f6f8;
+  --soft-2: #eeeef2;
+  --bar: #dcdce2;
+  --accent: #5a48d6;
+  --accent-2: #7b6cf0;
+  --accent-soft: #ecebff;
+  --accent-ink: #3c2fa8;
+  --col: 760px;
+  --wide: 1080px;
+  --gutter: 24px;
+  --nav-h: 56px;
+  --display: "Avenir Next", "Avenir", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --radius: 14px;
+  --font: "Inter", -apple-system, system-ui, "Segoe UI", Roboto, "PingFang SC", "Noto Sans CJK SC", sans-serif;
+  --serif: "Source Serif 4", Georgia, "Noto Serif SC", serif;
+  --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --ease-ui: cubic-bezier(.4, 0, .2, 1);
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+html.still { scroll-behavior: auto; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 400 17px/1.65 var(--font); letter-spacing: -.003em;
+  -webkit-font-smoothing: antialiased; overflow-x: hidden;
+}
+img { max-width: 100%; display: block; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 3px; }
+::selection { background: var(--accent-soft); }
+.skip { position: absolute; left: -999px; top: 8px; background: #000; color: #fff; padding: 8px 12px; border-radius: 8px; z-index: 300; }
+.skip:focus { left: 8px; }
+
+/* ---------- layout ---------- */
+.col { max-width: calc(var(--col) + 2 * var(--gutter)); margin: 0 auto; padding: 0 var(--gutter); }
+.wide { max-width: calc(var(--wide) + 2 * var(--gutter)); margin: 0 auto; padding: 0 var(--gutter); }
+section { padding: 72px 0 8px; scroll-margin-top: var(--nav-h); }
+h2 { font: 500 30px/1.25 var(--font); letter-spacing: -.02em; margin: 0 0 18px; }
+h3 { font: 500 21px/1.35 var(--font); letter-spacing: -.012em; margin: 40px 0 10px; }
+p { margin: 0 0 18px; color: var(--ink); font-weight: 400; }
+.eyebrow { font: 500 12.5px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+.eyebrow::before { content: ""; width: 18px; height: 1.5px; background: currentColor; }
+.lead { font-size: 19px; line-height: 1.6; color: var(--ink); }
+.muted { color: var(--ink-2); }
+em.k { font-style: normal; color: var(--accent-ink); font-weight: 500; }
+hr.sep { border: 0; border-top: 1px solid var(--line); margin: 64px auto 0; max-width: var(--wide); }
+
+/* ---------- nav (always visible) ---------- */
+.nav {
+  position: fixed; inset: 0 0 auto; z-index: 100; height: var(--nav-h);
+  background: rgba(255, 255, 255, .78); backdrop-filter: saturate(180%) blur(18px); -webkit-backdrop-filter: saturate(180%) blur(18px);
+  border-bottom: 1px solid var(--line);
+  transition: opacity .4s var(--ease-ui), transform .4s var(--ease-ui);
+}
+.nav-bar { max-width: calc(var(--wide) + 2 * var(--gutter)); margin: 0 auto; padding: 0 var(--gutter); height: 100%; display: flex; align-items: center; gap: 24px; }
+.brand { font: 700 18px/1 var(--display); color: var(--ink); letter-spacing: -.01em; display: flex; align-items: center; }
+.brand:hover { text-decoration: none; }
+.brand .d { color: var(--accent); }
+.nav-menu { display: flex; gap: 22px; margin-left: auto; }
+.nav-menu a { color: var(--ink-2); font-size: 13.5px; font-weight: 500; position: relative; padding: 4px 0; }
+.nav-menu a:hover { color: var(--ink); text-decoration: none; }
+.nav-menu a.is-active { color: var(--ink); }
+.nav-menu a.is-active::after { content: ""; position: absolute; left: 0; right: 0; bottom: -2px; height: 1.5px; background: var(--accent); }
+.nav-cta { display: flex; gap: 8px; }
+@media (max-width: 860px) { .nav-menu { display: none; } .nav-cta { margin-left: auto; } }
+
+/* ---------- buttons ---------- */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px;
+  border-radius: 999px; border: 1px solid var(--line-2); background: #fff; color: var(--ink);
+  font: 500 14px/1 var(--font); white-space: nowrap; cursor: pointer;
+  transition: background-color .25s var(--ease-ui), border-color .25s var(--ease-ui), transform .25s var(--ease-ui);
+}
+.btn:hover { text-decoration: none; background: var(--soft); border-color: rgba(0,0,0,.22); }
+.btn:active { transform: scale(.98); }
+.btn.dark { background: #111; color: #fff; border-color: #111; }
+.btn.dark:hover { background: #2a2a2e; }
+.btn.sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.btn svg { width: 16px; height: 16px; flex: none; }
+.btn[aria-disabled="true"] { color: var(--ink-3); cursor: default; }
+.btn[aria-disabled="true"]:hover { background: #fff; border-color: var(--line-2); }
+.btn.dark[aria-disabled="true"], .btn.dark[aria-disabled="true"]:hover { background: #2a2a2e; border-color: #2a2a2e; color: rgba(255,255,255,.72); }
+.btn.dark .soon { background: rgba(255,255,255,.16); color: #fff; }
+.btn .soon { font: 600 10px/1 var(--font); letter-spacing: .06em; text-transform: uppercase; padding: 4px 6px; border-radius: 999px; background: var(--soft-2); color: var(--ink-2); }
+
+/* ---------- hero ---------- */
+.hero { padding: calc(var(--nav-h) + 64px) 0 0; text-align: center; }
+.hero h1 { font: 700 clamp(48px, 8vw, 92px)/1.02 var(--display); letter-spacing: -.01em; margin: 0; }   /* WorldCast wordmark face (Avenir Next), upright, Bold */
+.hero h1 .d { color: var(--accent); }
+.hero .subtitle { font: 400 clamp(19px, 2.4vw, 24px)/1.4 var(--serif); color: var(--ink-2); margin: 16px auto 0; max-width: 720px; font-style: italic; }
+.hero .team { margin: 26px 0 0; font-size: 15px; color: var(--ink); font-weight: 500; }
+.hero .team small { display: block; font-weight: 400; color: var(--ink-3); font-size: 13px; margin-top: 4px; }
+.hero .links { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 28px; }
+.motion .hero-inner > * { animation: rise 1s var(--ease-out) both; }
+.motion .hero-inner > :nth-child(2) { animation-delay: .06s; }
+.motion .hero-inner > :nth-child(3) { animation-delay: .12s; }
+.motion .hero-inner > :nth-child(n+4) { animation-delay: .2s; }
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+/* hero figure: the paper's Figure 1, built up layer by layer (assets/js/heroanim.js, WorldCast-style) */
+.hf-wrap { margin: 44px auto 0; }
+.hf { margin: 0; }
+.hf-frame { padding: 14px; }
+.hf-stage { position: relative; }
+.hf-stage img { width: 100%; height: auto; }
+.hf-stage .hf-l, .hf-stage .hf-base { position: absolute; inset: 0; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; }
+.hf-stage .hf-sizer { visibility: hidden; }
+.hf-cap { display: flex; gap: 18px; align-items: flex-start; justify-content: space-between; max-width: none; text-align: left; }
+.hf-cap > span { max-width: 860px; }
+.hf-replay { flex: none; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-2); background: #fff; border-radius: 999px; height: 30px; padding: 0 12px; font: 500 12.5px/1 var(--font); color: var(--ink-2); cursor: pointer; transition: background-color .25s var(--ease-ui), color .25s var(--ease-ui); }
+.hf-replay:hover { background: var(--soft); color: var(--ink); }
+.hf-replay svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+@property --sweep { syntax: '<angle>'; inherits: false; initial-value: 360deg; }
+.motion .hf-l { transition-property: opacity, transform, clip-path, --sweep; transition-duration: .75s; transition-timing-function: var(--ease-out); transition-delay: var(--d, 0s); clip-path: var(--c1); }
+.motion .hf:not(.play) .hf-l { opacity: 0; transition: none; clip-path: var(--c0); }
+.motion .hf-base { transition: opacity 1s var(--ease-out), transform 1.2s var(--ease-out); }
+.motion .hf:not(.play) .hf-base { opacity: 0; transform: scale(1.015); transition: none; }
+.motion .hf-l.k-pop { transition-timing-function: cubic-bezier(.34, 1.4, .64, 1); transition-duration: .7s; }
+.motion .hf:not(.play) .hf-l.k-pop { transform: scale(.88); }
+.motion .hf:not(.play) .hf-l.k-rise { transform: translateY(10px); }
+.motion .hf:not(.play) .hf-l.k-drop { transform: translateY(-14px) scale(1.03); }
+.motion .hf-l.k-drop { transition-timing-function: cubic-bezier(.34, 1.3, .64, 1); transition-duration: .9s; }
+.motion .hf:not(.play) .hf-l.k-wipe-right, .motion .hf:not(.play) .hf-l.k-wipe-down { opacity: 1; }
+.motion .hf-l.k-wipe-right, .motion .hf-l.k-wipe-down { transition-duration: .9s; transition-timing-function: cubic-bezier(.45, .05, .25, 1); }
+.hf-l.k-ring { -webkit-mask: conic-gradient(from -90deg at var(--cx) var(--cy), #000 var(--sweep), transparent 0); mask: conic-gradient(from -90deg at var(--cx) var(--cy), #000 var(--sweep), transparent 0); }
+.motion .hf:not(.play) .hf-l.k-ring { --sweep: 0deg; opacity: 1; }
+.motion .hf-l.k-ring { transition-duration: 1.4s; transition-timing-function: cubic-bezier(.5, 0, .2, 1); }
+
+/* ---------- stats ---------- */
+.stats { display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin-top: 56px; }
+.stat { padding: 24px 18px; border-left: 1px solid var(--line); }
+.stat:first-child { border-left: 0; }
+.stat b { display: block; font: 500 34px/1.05 var(--font); letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.stat b small { font-size: 16px; color: var(--ink-2); font-weight: 500; letter-spacing: 0; margin-left: 2px; }
+.stat span { display: block; margin-top: 8px; font-size: 13px; line-height: 1.4; color: var(--ink-2); }
+@media (max-width: 860px) { .stats { grid-template-columns: repeat(2, 1fr); } .stat { border-left: 0; border-top: 1px solid var(--line); } .stat:nth-child(-n+2) { border-top: 0; } .stat:nth-child(even) { border-left: 1px solid var(--line); } .stat:last-child { grid-column: 1 / -1; border-left: 0; } }
+
+/* ---------- figures ---------- */
+figure { margin: 32px 0; }
+figure .frame { position: relative; border-radius: var(--radius); overflow: hidden; background: #fff; border: 1px solid var(--line); }
+figure img { width: 100%; height: auto; cursor: zoom-in; }
+figcaption { margin: 14px auto 0; max-width: var(--col); font-size: 14.5px; line-height: 1.6; color: var(--ink-2); }
+figcaption b { color: var(--ink); font-weight: 600; }
+.motion .reveal { opacity: 0; transform: translateY(24px); transition: opacity .9s var(--ease-out), transform .9s var(--ease-out); }
+.motion .reveal.is-in { opacity: 1; transform: none; }
+
+/* ---------- abstract / key ideas ---------- */
+.ideas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 36px 0 8px; }
+.idea { border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 20px 18px; background: #fff; transition: border-color .25s var(--ease-ui), transform .35s var(--ease-out), box-shadow .35s var(--ease-out); }
+.idea:hover { border-color: rgba(90, 72, 214, .35); transform: translateY(-2px); box-shadow: 0 10px 30px rgba(40, 30, 120, .07); }
+.idea .n { font: 500 12px/1 var(--mono); color: var(--accent); }
+.idea h4 { font: 600 16px/1.3 var(--font); margin: 12px 0 8px; letter-spacing: -.01em; }
+.idea p { font-size: 14.5px; line-height: 1.55; color: var(--ink-2); margin: 0; }
+@media (max-width: 760px) { .ideas { grid-template-columns: 1fr; } }
+
+/* ---------- animated paper figures (assets/js/figanim.js) ---------- */
+.afig-bar { display: flex; align-items: flex-start; gap: 16px; margin: 26px 0 14px; }
+.afig:not(.is-live) .afig-bar, .afig:not(.is-live) .afig-text { display: none; }
+.afig-steps { flex: 1; display: grid; gap: 6px; }
+.afig-play { flex: none; position: relative; width: 34px; height: 34px; margin-top: 4px; border-radius: 50%; border: 1px solid var(--line-2); background: #fff; cursor: pointer; transition: background-color .25s var(--ease-ui), border-color .25s var(--ease-ui), transform .25s var(--ease-ui); }
+.afig-play:hover { background: var(--soft); border-color: rgba(0,0,0,.24); }
+.afig-play:active { transform: scale(.94); }
+.afig-play::before { content: ""; position: absolute; left: 13px; top: 10.5px; border-style: solid; border-width: 6.5px 0 6.5px 10px; border-color: transparent transparent transparent var(--ink); }
+.afig.is-playing .afig-play::before { left: 12px; top: 11px; width: 3px; height: 12px; border: 0; background: var(--ink); box-shadow: 7px 0 0 var(--ink); border-radius: 1px; }
+.afig-play::after { content: "Play"; position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.afig.is-playing .afig-play::after { content: "Pause"; }
+.step { position: relative; text-align: left; border: 0; background: none; padding: 12px 0 0; cursor: pointer; color: var(--ink-3); font: 500 13px/1.3 var(--font); transition: color .3s var(--ease-ui); }
+.step:hover { color: var(--ink-2); }
+.step .track { position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--soft-2); overflow: hidden; border-radius: 2px; }
+.step .track i { position: absolute; inset: 0; background: var(--accent); transform-origin: left center; transform: scaleX(0); will-change: transform; }
+.step.is-on { color: var(--ink); }
+.step .num { font: 500 11px/1 var(--mono); display: block; margin-bottom: 5px; color: inherit; opacity: .8; }
+@media (max-width: 640px) { .step .lbl { display: none; } }
+.afig-stage { position: relative; }
+.afig-fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.afig-text { min-height: 104px; }
+.step-text { min-height: 84px; margin-top: 18px; display: grid; grid-template-columns: 180px 1fr; gap: 20px; align-items: start; }
+.step-text h4 { margin: 0; font: 600 16px/1.35 var(--font); }
+.step-text p { margin: 0; font-size: 15.5px; color: var(--ink-2); line-height: 1.6; }
+.step-text .swap { transition: opacity .3s var(--ease-ui), transform .3s var(--ease-ui); }
+.step-text .swap.out { opacity: 0; transform: translateY(6px); }
+@media (max-width: 640px) { .step-text { grid-template-columns: 1fr; gap: 6px; } }
+
+/* ---------- equations ---------- */
+.eq { position: relative; margin: 26px 0; padding: 4px 0; overflow-x: auto; overflow-y: hidden; font-size: 17px; }
+.eq .katex-display { margin: 0; }
+.eq .note { font-size: 13px; color: var(--ink-3); margin-top: 6px; }
+
+/* ---------- training stages ---------- */
+.stages { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 24px; }
+.stg { border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px 16px; background: #fff; }
+.stg small { font: 500 11px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--accent); }
+.stg h4 { font: 600 15.5px/1.3 var(--font); margin: 8px 0 10px; }
+.stg p { font-size: 14px; line-height: 1.6; color: var(--ink-2); margin: 0; }
+@media (max-width: 860px) { .stages { grid-template-columns: 1fr; } }
+.badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.badge { font: 500 12px/1 var(--font); padding: 6px 9px; border-radius: 999px; background: var(--soft); color: var(--ink-2); border: 1px solid var(--line); }
+.badge.hot { background: #fff4ec; color: #a24a12; border-color: #f6dccb; }
+.badge.cold { background: #eef7fc; color: #276a8f; border-color: #d4e9f5; }
+
+/* ---------- results (Kimi-style bar panels) ---------- */
+.rtabs { margin: 8px 0 26px; }
+.panels { display: grid; grid-template-columns: repeat(2, 1fr); gap: 34px 48px; }
+@media (max-width: 760px) { .panels { grid-template-columns: 1fr; } }
+.panel h5 { margin: 0 0 12px; font: 600 14.5px/1.3 var(--font); display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.panel h5 small { font: 400 12px/1 var(--font); color: var(--ink-3); }
+.brow { display: grid; grid-template-columns: 150px 1fr 54px; align-items: center; gap: 10px; height: 26px; font-size: 13px; }
+.brow .nm { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 7px; }
+.brow .nm i { width: 7px; height: 7px; border-radius: 2px; flex: none; background: var(--ink-3); }
+.brow .nm i.c { background: transparent; border: 1.5px solid var(--ink-3); border-radius: 50%; }
+.brow .nm i.p { background: transparent; border: 1.5px dashed var(--ink-3); border-radius: 2px; }
+.brow .bt { height: 12px; background: transparent; position: relative; }
+.brow .bt b { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; background: var(--bar); width: 0; transition: width 1.1s var(--ease-out); }
+.still .brow .bt b { transition: none; }
+.brow .v { font: 500 12px/1 var(--mono); color: var(--ink-2); text-align: right; font-variant-numeric: tabular-nums; }
+.brow.me .nm { color: var(--ink); font-weight: 600; }
+.brow.me .nm i { background: var(--accent); }
+.brow.me .bt b { background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+.brow.me .v { color: var(--accent-ink); font-weight: 600; }
+.legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-3); margin: 0 0 22px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 8px; height: 8px; border-radius: 2px; background: var(--ink-3); }
+.legend i.c { background: transparent; border: 1.5px solid var(--ink-3); border-radius: 50%; }
+.legend i.p { background: transparent; border: 1.5px dashed var(--ink-3); }
+.legend i.me { background: var(--accent); }
+.fine { font-size: 13px; color: var(--ink-3); line-height: 1.55; margin-top: 22px; }
+
+/* full tables */
+details.full { margin-top: 40px; border-top: 1px solid var(--line); }
+details.full > summary { list-style: none; cursor: pointer; padding: 18px 0; font: 500 16px/1.3 var(--font); display: flex; align-items: center; justify-content: space-between; }
+details.full > summary::-webkit-details-marker { display: none; }
+details.full > summary::after { content: "+"; font: 400 22px/1 var(--font); color: var(--ink-3); transition: transform .3s var(--ease-ui); }
+details.full[open] > summary::after { transform: rotate(45deg); }
+.tbl-title { font: 600 14px/1.4 var(--font); margin: 26px 0 8px; }
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { padding: 8px 12px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+th:first-child, td:first-child { text-align: left; }
+thead th { font-weight: 600; color: var(--ink-2); background: var(--soft); font-size: 12px; }
+td { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); }
+td:first-child { font-family: var(--font); color: var(--ink); font-size: 13px; }
+tr.grp td { text-align: left; font: italic 500 12px/1 var(--font); color: var(--ink-3); background: #fcfcfd; padding: 9px 12px; }
+tr.me td { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+tbody tr:last-child td { border-bottom: 0; }
+
+/* ---------- qualitative examples (assets/js/qualview.js) ---------- */
+.qv { margin-top: 30px; }
+.qv-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.qv-tab { border: 1px solid var(--line-2); background: #fff; border-radius: 12px; padding: 9px 14px 10px; text-align: left; cursor: pointer; font: 600 14px/1.25 var(--font); color: var(--ink); transition: border-color .25s var(--ease-ui), background-color .25s var(--ease-ui), transform .25s var(--ease-ui); }
+.qv-tab small { display: block; font: 500 10.5px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 5px; }
+.qv-tab:hover { border-color: rgba(90, 72, 214, .35); }
+.qv-tab:active { transform: scale(.98); }
+.qv-tab[aria-selected="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.qv-tab[aria-selected="true"] small { color: var(--accent); }
+.qv-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); height: 640px; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: #fff; }
+.qv-card[data-shape="wide"] { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); }
+.qv-card[data-shape="small"] { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); }
+.qv-media { position: relative; background: var(--soft); display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
+.qv-imgwrap { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 22px; overflow: hidden; }
+.qv-img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; border-radius: 4px; box-shadow: 0 6px 24px rgba(20, 20, 40, .1); cursor: zoom-in; }
+.qv-lens { position: absolute; left: 0; top: 0; width: 190px; height: 190px; border-radius: 50%; pointer-events: none; background-repeat: no-repeat; background-color: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.12), 0 14px 36px rgba(20, 20, 50, .22), inset 0 0 0 3px #fff; opacity: 0; transition: opacity .2s var(--ease-ui); }
+.qv-lens.on { opacity: 1; }
+.qv-hint { font-size: 12px; color: var(--ink-3); text-align: center; padding: 0 0 12px; }
+.qv-text { position: relative; overflow-y: auto; padding: 26px 30px 36px; scrollbar-width: thin; scrollbar-color: var(--bar) transparent; -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(180deg, #000 calc(100% - 40px), transparent); }
+.qv-title { font: 600 18px/1.3 var(--font); letter-spacing: -.01em; margin-bottom: 16px; }
+.qv-tag { display: inline-block; font: 600 10.5px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase; padding: 5px 8px; border-radius: 999px; margin-bottom: 9px; }
+.qv-q .qv-tag { background: var(--soft-2); color: var(--ink-2); }
+.qv-a .qv-tag { background: var(--accent-soft); color: var(--accent-ink); }
+.qv-q { padding-bottom: 16px; margin-bottom: 18px; border-bottom: 1px dashed var(--line-2); }
+.qv-q .qv-body { font-size: 14px; line-height: 1.6; color: var(--ink-2); }
+.qv-body p { margin: 0 0 7px; }
+.qv-a .qv-body { font-size: 14px; line-height: 1.62; color: var(--ink); }
+.qv-a .qv-body .katex-display { margin: 6px 0 10px; overflow-x: auto; overflow-y: hidden; }
+.qv-cap { font-size: 14px; color: var(--ink-2); margin: 14px 0 0; max-width: var(--col); }
+.motion .qv-card.qv-swap .qv-img { animation: qvimg .55s var(--ease-out) both; }
+.motion .qv-card.qv-swap .qv-title, .motion .qv-card.qv-swap .qv-q { animation: rise .5s var(--ease-out) both; }
+@keyframes qvimg { from { opacity: 0; transform: scale(.975); } to { opacity: 1; transform: none; } }
+.motion .qv:not(.seen) .qv-a .qv-body > * { opacity: 0; }
+.qv-body > .qv-in { animation: qvin .5s var(--ease-out) both; }
+@keyframes qvin { from { opacity: 0; transform: translateY(6px); filter: blur(2px); } to { opacity: 1; transform: none; filter: none; } }
+@media (max-width: 860px) {
+  .qv-card, .qv-card[data-shape] { grid-template-columns: 1fr; height: auto; }
+  .qv-media { border-right: 0; border-bottom: 1px solid var(--line); }
+  .qv-imgwrap { height: 380px; flex: none; }
+  .qv-text { max-height: 520px; }
+}
+
+/* segmented control (shared) */
+.seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 999px; background: var(--soft-2); }
+.seg button { border: 0; background: transparent; height: 30px; padding: 0 14px; border-radius: 999px; font: 600 12.5px/1 var(--font); color: var(--ink-2); cursor: pointer; transition: background-color .25s var(--ease-ui), color .25s var(--ease-ui), box-shadow .25s var(--ease-ui); }
+.seg button:hover { color: var(--ink); }
+.seg button[aria-pressed="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+
+/* ---------- reconstruction: draggable before/after (assets/js/recon.js) ---------- */
+.cmp { --x: 50%; position: relative; overflow: hidden; border-radius: 12px; background: var(--soft); touch-action: pan-y; user-select: none; -webkit-user-select: none; cursor: ew-resize; aspect-ratio: 1; }
+.cmp-z { position: absolute; inset: 0; transition: transform .35s var(--ease-out); }
+.cmp.is-drag .cmp-z, .cmp.is-zoom .cmp-z { transition: none; }
+.cmp-z img { display: block; width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
+.cmp-l { position: absolute; inset: 0; clip-path: inset(0 calc(100% - var(--x)) 0 0); }
+.cmp-h { position: absolute; top: 0; bottom: 0; left: var(--x); width: 0; z-index: 3; }
+.cmp-h i { position: absolute; top: 0; bottom: 0; left: -1px; width: 2px; background: #fff; box-shadow: 0 0 6px rgba(0,0,0,.45); }
+.cmp-k { position: absolute; top: 50%; left: 0; width: 38px; height: 38px; transform: translate(-50%, -50%); padding: 0; border: 0; border-radius: 50%; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.35); display: grid; place-items: center; cursor: ew-resize; transition: transform .2s var(--ease-ui); }
+.cmp-k:hover, .cmp.is-drag .cmp-k { transform: translate(-50%, -50%) scale(1.08); }
+.cmp-k:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cmp-k svg { width: 18px; height: 18px; fill: none; stroke: #333; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.cmp-tag { position: absolute; top: 10px; z-index: 2; max-width: 46%; padding: 4px 9px; border-radius: 6px; background: rgba(0,0,0,.62); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); color: #fff; font: 600 11.5px/1.3 var(--font); pointer-events: none; transition: opacity .2s var(--ease-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cmp-tag.l { left: 10px; } .cmp-tag.r { right: 10px; }
+.cmp.is-zoom { cursor: crosshair; }
+.cmp.is-loading::after { content: ""; position: absolute; inset: 0; z-index: 4; background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.55) 50%, transparent 70%) var(--soft) 0 0 / 300% 100%; animation: cmp-shim 1.2s linear infinite; opacity: .9; }
+.cmp.is-loading.has-img::after { opacity: .35; }
+@keyframes cmp-shim { to { background-position: -150% 0, 0 0; } }
+.ctl { display: inline-flex; align-items: center; gap: 10px; }
+.ctl-l { font: 500 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.rf-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 26px; margin: 28px 0 16px; }
+.rf-hint { margin-left: auto; font-size: 13px; color: var(--ink-3); }
+.rf-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.rf-card { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #fff; }
+.rf-card .cmp { border-radius: 0; }
+.rf-card .cmp-z img { object-fit: cover; }
+.cmp-tag.rf { background: rgba(90, 72, 214, .9); }
+.rf-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; font-size: 13px; color: var(--ink-3); }
+.rf-foot b { color: var(--ink); font-weight: 600; }
+@media (max-width: 900px) { .rf-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .rf-grid { grid-template-columns: 1fr; } .rf-hint { margin-left: 0; } }
+
+/* ---------- gallery ---------- */
+/* staggered columns: each column starts lower than its neighbour and tiles take varied crops;
+   the lightbox always opens the uncropped original (data-full) */
+.gallery { display: flex; gap: 12px; align-items: flex-start; margin-top: 30px; padding-bottom: 40px; }
+.g-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.g-tile { position: relative; margin: 0; border-radius: 12px; overflow: hidden; background: var(--soft); cursor: zoom-in; }
+.g-tile img { display: block; width: 100%; height: 100%; object-fit: cover; transition: transform .7s var(--ease-out), filter .3s var(--ease-ui); }
+.g-tile:hover img { transform: scale(1.035); filter: saturate(1.08); }
+.g-tile .g-ex { position: absolute; right: 8px; bottom: 8px; width: 28px; height: 28px; border-radius: 50%; background: rgba(255,255,255,.88); display: grid; place-items: center; opacity: 0; transform: translateY(4px); transition: opacity .25s var(--ease-ui), transform .25s var(--ease-ui); pointer-events: none; }
+.g-tile .g-ex svg { width: 14px; height: 14px; fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.g-tile:hover .g-ex { opacity: 1; transform: none; }
+.g-note { margin-top: 2px; font-size: 13px; color: var(--ink-3); }
+
+/* ---------- citation ---------- */
+.bib { position: relative; background: var(--soft); border-radius: 14px; padding: 20px 22px; overflow-x: auto; }
+.bib pre { margin: 0; font: 400 13px/1.65 var(--mono); color: var(--ink); }
+.bib .btn { position: absolute; top: 12px; right: 12px; }
+.contrib { font-size: 15px; color: var(--ink-2); line-height: 1.8; }
+.contrib b { color: var(--ink); font-weight: 500; }
+
+/* ---------- footer ---------- */
+footer { margin-top: 96px; border-top: 1px solid var(--line); padding: 32px 0 48px; font-size: 13px; color: var(--ink-3); }
+footer .wide { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+footer a { color: var(--ink-2); }
+
+/* ---------- lightbox ---------- */
+.lb { position: fixed; inset: 0; z-index: 200; background: rgba(255,255,255,.94); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: grid; place-items: center; padding: 40px 24px; opacity: 0; pointer-events: none; transition: opacity .3s var(--ease-ui); cursor: zoom-out; }
+.lb.open { opacity: 1; pointer-events: auto; }
+.lb img { max-width: min(1600px, 100%); max-height: calc(100vh - 80px); width: auto; height: auto; border-radius: 10px; box-shadow: 0 20px 60px rgba(0,0,0,.18); transform: scale(.97); transition: transform .4s var(--ease-out); }
+.lb.open img { transform: none; }
+.lb .x { position: absolute; top: 16px; right: 16px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after { animation: none !important; transition: none !important; }
+}
+@media (max-width: 640px) {
+  :root { --gutter: 16px; }
+  body { font-size: 16px; }
+  section { padding-top: 56px; }
+  h2 { font-size: 25px; }
+  .brow { grid-template-columns: 118px 1fr 46px; }
+  .nav-cta .btn:first-child { display: none; }
+  .seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .seg::-webkit-scrollbar { display: none; }
+  .seg button { white-space: nowrap; flex: none; }
+}
+.katex-display > .katex { max-width: 100%; }
+</style>
+</head>
+<body>
+<a class="skip" href="#overview">Skip to content</a>
+
+<!-- ======================= NAV ======================= -->
+<nav class="nav" id="nav" aria-label="Sections">
+  <div class="nav-bar">
+    <a class="brand" href="#top"><span class="d">d</span>NaViT</a>
+    <div class="nav-menu">
+      <a href="#overview">Overview</a>
+      <a href="#method">Method</a>
+      <a href="#training">Training</a>
+      <a href="#results">Results</a>
+      <a href="#examples">Examples</a>
+      <a href="#recon">Reconstruction</a>
+      <a href="#gallery">Gallery</a>
+      <a href="#citation">Citation</a>
+    </div>
+    <div class="nav-cta">
+      <a class="btn sm" data-link="code">GitHub</a>
+      <a class="btn sm dark" data-link="hf">Hugging Face</a>
+    </div>
+  </div>
+</nav>
+
+<main>
+<!-- ======================= HERO ======================= -->
+<header class="hero" id="top">
+  <div class="col hero-inner">
+    <h1><span class="d">d</span>NaViT</h1>
+    <p class="subtitle">Discrete Codes are General-Purpose Visual Representations</p>
+    <p class="team">Meituan LongCat Team<small>A Discrete Native-resolution Vision Transformer</small></p>
+    <div class="links">
+      <a class="btn dark" data-link="paper"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>Paper</a>
+      <a class="btn" data-link="code"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.04 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.58.23 2.75.11 3.04.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.26 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z"/></svg>Code</a>
+      <a class="btn" data-link="hf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r="1" fill="currentColor"/><circle cx="15" cy="10" r="1" fill="currentColor"/><path d="M8.5 14.5c1 1.3 2.2 2 3.5 2s2.5-.7 3.5-2"/></svg>Models</a>
+      <a class="btn" href="#citation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 7h4v4H8v2a2 2 0 0 0 2 2M13 7h4v4h-3v2a2 2 0 0 0 2 2"/></svg>BibTeX</a>
+    </div>
+  </div>
+
+  <div class="wide hf-wrap">
+    <figure class="hf" id="hero-fig">
+      <div class="frame hf-frame"><div class="hf-stage"><img class="hf-static" src="assets/fig/teaser_full.jpg?v=87b" alt="dNaViT overview: a shared discrete visual vocabulary, analogous to a language vocabulary, supporting reconstruction, generation and editing, and visual understanding" data-zoom data-full="assets/fig/teaser_full.jpg"></div></div>
+      <figcaption class="hf-cap"><span><b>Figure 1. dNaViT: a unified visual tokenizer for general-purpose modeling.</b> dNaViT represents arbitrary-resolution images as discrete visual primitives, natively unifying <i>reconstruction, understanding, generation, and editing</i> under a shared vocabulary. By achieving performance competitive with specialized baselines across all domains, dNaViT validates a shared token-based paradigm for vision, analogous to language modeling.</span><button class="hf-replay" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v4h4"/></svg>Replay</button></figcaption>
+    </figure>
+  </div>
+
+  <div class="wide">
+    <div class="stats" id="stats">
+      <div class="stat"><b>f = 32</b><span>spatial downsampling, native resolution</span></div>
+      <div class="stat"><b data-count="28.12" data-dec="2">28.12<small>dB</small></b><span>ImageNet PSNR @ 512² (dNaViT-G64)</span></div>
+      <div class="stat"><b>79.47<small>%</small></b><span>ImageNet-1K linear probe on discrete codes</span></div>
+      <div class="stat"><b data-count="885" data-dec="0">885</b><span>OCRBench with Qwen3-8B, best among discrete VLMs</span></div>
+      <div class="stat"><b>49.5</b><span>GenEval2 GM, highest among reported models</span></div>
+    </div>
+  </div>
+</header>
+
+<!-- ======================= OVERVIEW ======================= -->
+<section id="overview">
+  <div class="col reveal">
+    <div class="eyebrow">Overview</div>
+    <h2>Can a finite discrete vocabulary represent the richness of the visual world?</h2>
+    <p class="lead">Language models are built on discrete tokens and next-token prediction. Multimodal models, by contrast, usually keep separate continuous encodings for perception and synthesis. dNaViT asks whether vision can follow the language path: one learned vocabulary of discrete codes that serves <em class="k">understanding, reconstruction, generation, and editing</em> alike.</p>
+    <p>Building on a frozen pretrained vision encoder, dNaViT uses lightweight <b>residual modulation</b> to enrich semantic features with reconstruction-relevant detail. <b>Grouped product quantization</b> expands discrete capacity without lengthening the spatial sequence, while <b>dual-branch reconstruction</b> and a <b>progressive training recipe</b> balance semantic fidelity and pixel accuracy within the shared bottleneck. As a single representation, it performs comparably to or better than specialized models across 12 understanding benchmarks, 4 generation benchmarks, and an editing benchmark.</p>
+  </div>
+  <div class="col">
+    <div class="ideas">
+      <div class="idea reveal"><span class="n">01</span><h4>Residual Modulator</h4><p>Fuses multi-level features of a frozen encoder and predicts a zero-initialized scale-and-shift residual, adding detail without disturbing semantics.</p></div>
+      <div class="idea reveal"><span class="n">02</span><h4>Grouped product quantization</h4><p>Splits each feature into G channel groups with their own codebooks: up to K<sup>G</sup> combinations at the same token count.</p></div>
+      <div class="idea reveal"><span class="n">03</span><h4>Dual-branch, three-stage training</h4><p>Semantic and pixel decoders share one discrete bottleneck, introduced progressively to avoid gradient interference.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= METHOD ======================= -->
+<section id="method">
+  <div class="col reveal">
+    <div class="eyebrow">Method</div>
+    <h2>From a frozen encoder to a shared discrete vocabulary</h2>
+    <p>dNaViT enriches the features of a frozen native-resolution encoder, quantizes them group by group, and decodes the same codes into both semantic features and pixels. Step through the pipeline below.</p>
+  </div>
+  <div class="wide reveal">
+    <div class="afig" id="afig2" data-afig="fig2">
+    <div class="afig-bar" aria-label="dNaViT pipeline"></div>
+    <figure style="margin-top:0">
+      <div class="frame afig-stage">
+        <img src="assets/fig/dnavit.jpg" alt="Overview of dNaViT: representation encoder, residual modulator, group-wise vector quantizer, multi-group discrete tokens and vision transformer decoder" data-zoom>
+      </div>
+      <div class="step-text afig-text"><h4 class="swap"></h4><p class="swap"></p></div>
+      <figcaption><b>Figure 2. Overview of dNaViT.</b> (a) A frozen representation encoder handles arbitrary resolutions, with ResMod injecting multi-level information before group-wise product quantization; the shared codes are decoded by individual ViT decoders into pixel and semantic reconstructions. (b) ResMod fuses intermediate features and predicts a zero-initialized scale-and-shift residual. (c) Pixel and semantic branches are optimized with image and feature reconstruction losses.</figcaption>
+    </figure>
+    </div>
+  </div>
+
+  <div class="col reveal">
+    <h3>Residual Modulator</h3>
+    <p>Quantization can collapse weakly expressed appearance differences into the same code. ResMod exposes complementary cues from several encoder depths while keeping the final semantic representation <span class="tex">\mathbf{S}</span> as an anchor. Its affine head is zero-initialized, so at the start of training <span class="tex">\mathbf{Z}=\mathbf{S}</span> exactly.</p>
+    <div class="eq"><div class="texd">(\boldsymbol{\gamma},\boldsymbol{\beta}) = \operatorname{Split}\big(\mathcal{W}_{\theta}(\operatorname{LN}(\mathcal{P}_{\theta}(\mathbf{U})))\big),\qquad \mathbf{Z} = \mathbf{S} + \underbrace{\boldsymbol{\gamma}\odot\mathbf{S} + \boldsymbol{\beta}}_{\boldsymbol{\Delta}_{\theta}}</div></div>
+
+    <h3>Grouped product quantization</h3>
+    <p>Each position's feature <span class="tex">\mathbf{z}_t\in\mathbb{R}^C</span> is split into <span class="tex">G</span> groups, each matched to the nearest entry of its own <span class="tex">K</span>-entry codebook. Capacity grows with <span class="tex">G</span> while the number of spatial tokens <span class="tex">N_q</span> stays fixed.</p>
+    <div class="eq"><div class="texd">|\mathcal{K}| = K^{G},\qquad B_{\text{position}} = G\log_2 K,\qquad B_{\text{image}} = N_q\, G\log_2 K</div></div>
+  </div>
+
+  <div class="wide reveal">
+    <div class="afig" id="afig3" data-afig="fig3">
+    <div class="afig-bar"></div>
+    <figure style="margin-top:0">
+      <div class="frame afig-stage">
+        <img src="assets/fig/group_tokenizer.jpg" alt="Tokenization and unified codes for understanding, reconstruction, generation and editing" data-zoom>
+      </div>
+      <div class="step-text afig-text"><h4 class="swap"></h4><p class="swap"></p></div>
+      <figcaption><b>Figure 3. Tokenization and unified codes for downstream tasks.</b> (a) At each spatial position, the modulated feature is split into <i>G</i> channel groups and quantized with group-specific codebooks, yielding one index per group and their embeddings. (b) Understanding supplies only code indices to the language model (LM) through newly initialized group-wise embedding tables, trained jointly with the LM. (c) Reconstruction concatenates the indexed embeddings from the frozen tokenizer codebooks and feeds them to the pixel decoder. (d) Generation and editing use a multi-sub-token head atop the LM to predict each position's multi-level indices, optionally conditioned on a reference image, then decode through the same frozen codebooks and pixel decoder.</figcaption>
+    </figure>
+    </div>
+  </div>
+
+  <div class="col reveal">
+    <h3>Dual-branch reconstruction</h3>
+    <p>The same quantized embeddings <span class="tex">\mathbf{C}</span> feed two decoders. The <b>semantic branch</b> regresses the post-ResMod features with a cosine plus MSE loss; the MSE term guards against anisotropic features where cosine alone looks deceptively small. The <b>pixel branch</b> unmerges tokens back to the native grid and is trained with L1, MSE, LPIPS, ConvNeXt perceptual, and Gram losses.</p>
+    <div class="eq"><div class="texd">\mathcal{L}_{\text{dual}} = \lambda_{\text{sem}}\Big[1-\cos\big(\widehat{\mathbf{Z}},\operatorname{sg}(\mathbf{Z}^{\star})\big) + \lambda^{\text{sem}}_{\text{MSE}}\big\|\widehat{\mathbf{Z}}-\operatorname{sg}(\mathbf{Z}^{\star})\big\|_2^2\Big] + \lambda_{\text{pix}}\,\mathcal{L}_{\text{pix}}</div></div>
+  </div>
+  <div class="wide reveal">
+    <figure>
+      <div class="frame"><img src="assets/fig/Dual_Branch.jpg" alt="Semantic feature cosine similarity map and pixel reconstructions from dNaViT-G16 and G64" loading="lazy" data-zoom></div>
+      <figcaption><b>Figure 4. Semantics and pixel detail in one discrete representation.</b> (a) Reconstructed semantic features closely match the original QwenViT features (per-token cosine similarity). (b) Pixel reconstructions from dNaViT-G16 and dNaViT-G64, with crops highlighting fine text on the jersey.</figcaption>
+    </figure>
+  </div>
+
+  <div class="col reveal">
+    <h3>Refiner: a code-conditioned flow decoder</h3>
+    <p>Discrete codes only partially specify fine appearance, so a direct ViT pixel decoder tends to over-smooth. The Refiner replaces it with a flow decoder built on a pretrained image-generation prior, conditioned on the codes through global context tokens and time-conditioned spatial residuals. A multi-step teacher trained by flow matching is distilled into a one-step student with adversarial supervision. The codes themselves do not change.</p>
+  </div>
+  <div class="wide reveal">
+    <div class="afig" id="afig5" data-afig="fig5">
+    <div class="afig-bar"></div>
+    <figure style="margin-top:0">
+      <div class="frame afig-stage">
+        <img src="assets/fig/refiner.jpg" alt="Overview of the code-conditioned Refiner with teacher and one-step student" data-zoom>
+      </div>
+      <div class="step-text afig-text"><h4 class="swap"></h4><p class="swap"></p></div>
+      <figcaption><b>Figure 5. The code-conditioned Refiner.</b> Code embeddings condition a flow decoder through global context tokens and time-conditioned spatial residuals; a multi-step teacher is distilled into an efficient one-step student with adversarial supervision. Increasing the group count (G64) improves reconstruction fidelity, while fewer groups (G16) with the one-step Refiner preserve fidelity and improve perceptual quality.</figcaption>
+    </figure>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= TRAINING ======================= -->
+<section id="training">
+  <div class="col reveal">
+    <div class="eyebrow">Training</div>
+    <h2>Three stages: continuous first, discrete second, joint last</h2>
+    <p>The tokenizer pairs a pretrained Qwen3-VL ViT (~400M parameters) with a residual modulator (~100M), about 500M parameters in total. The ViT stays frozen throughout. Learning complementary detail is separated from adapting it to the discrete bottleneck, so pixel gradients never disrupt the semantic codes while they are still forming.</p>
+  </div>
+  <div class="wide reveal">
+    <figure>
+      <div class="frame"><img src="assets/fig/training_stage.jpg" alt="Three-stage training schedule of dNaViT" loading="lazy" data-zoom></div>
+      <figcaption><b>Figure 6. Three-stage training schedule of dNaViT.</b> Continuous pixel pretraining is followed by discrete semantic reconstruction and joint reconstruction. Stage 2 stops pixel gradients at the quantized embeddings. Stage 3 opens this gradient path while a frozen copy of the Stage-2 ResMod supplies the feature target. Flame and snowflake icons mark trainable and frozen modules; dashed purple paths denote fixed targets.</figcaption>
+    </figure>
+    <div class="stages">
+      <div class="stg"><small>Stage 1</small><h4>Continuous pixel pretraining</h4><div class="badges"><span class="badge hot">Trainable · ResMod, pixel decoder</span><span class="badge cold">Frozen · ViT</span></div><p>ResMod's output <i>Z</i> goes straight to the pixel decoder, bypassing the quantizer. Minimizing the pixel loss trains ResMod and the pixel decoder together, so the residual pathway learns to expose reconstruction-relevant information before a finite vocabulary is introduced.</p></div>
+      <div class="stg"><small>Stage 2</small><h4>Discrete semantic reconstruction</h4><div class="badges"><span class="badge hot">Trainable · quantizer, both decoders</span><span class="badge cold">Frozen · ViT, ResMod</span></div><p>ViT and ResMod are frozen; their output <i>Z</i> is both the quantizer input and the fixed semantic target <i>Z</i>*. The quantizer and semantic decoder learn to reconstruct it, while the pixel decoder trains on detached codes, so pixel gradients cannot disrupt the codes while they are initialized.</p></div>
+      <div class="stg"><small>Stage 3</small><h4>Joint reconstruction</h4><div class="badges"><span class="badge hot">Trainable · student ResMod, quantizer, decoders</span><span class="badge cold">Frozen · ViT, Stage-2 ResMod copy</span></div><p>ResMod is unfrozen as a student while a frozen Stage-2 copy keeps supplying the target <i>Z</i>*, preventing target drift. Removing the stop-gradient lets pixel gradients reach the quantizer and the student ResMod under the joint dual-branch loss.</p></div>
+    </div>
+  </div>
+  <div class="col reveal">
+    <h3>Data</h3>
+    <p>The tokenizer is trained on images only, combining general-domain collections (LAION, COYO, DataComp, Recap-DataComp-1B, CapsFusion and in-house data), text-rich images and documents (TextAtlas5M subsets, Chinese and English book and news pages, infographics, ChartGalaxy), and fine-grained or high-aesthetic images (face-focused LAION subsets, SA-1B-derived images). Training starts at a fixed 256×256 and moves to native resolution up to 2K with a balanced resolution mix, over several hundred billion tokens in total.</p>
+  </div>
+</section>
+
+<!-- ======================= RESULTS ======================= -->
+<section id="results">
+  <div class="wide">
+    <div class="reveal" style="max-width:var(--col)">
+      <div class="eyebrow">Results</div>
+      <h2>One vocabulary, five kinds of task</h2>
+      <p>dNaViT is evaluated on reconstruction, frozen-feature classification, multimodal understanding (paired with Qwen3-8B), text-to-image generation, and instruction-guided editing. Bars show selected models per benchmark; dNaViT is highlighted.</p>
+    </div>
+    <div class="seg rtabs reveal" id="rtabs" role="tablist" aria-label="Result groups">
+      <button type="button" data-r="und" aria-pressed="true">Understanding</button>
+      <button type="button" data-r="gen">Generation &amp; Editing</button>
+      <button type="button" data-r="rec">Reconstruction</button>
+      <button type="button" data-r="cls">Classification</button>
+    </div>
+    <div class="legend reveal">
+      <span><i class="me"></i>dNaViT</span>
+      <span><i></i>Discrete</span>
+      <span><i class="c"></i>Continuous</span>
+      <span><i class="p"></i>Proprietary</span>
+    </div>
+    <div class="panels" id="panels"></div>
+    <p class="fine" id="rnote"></p>
+
+    <details class="full" id="full">
+      <summary>Full benchmark tables</summary>
+      <div id="tables"></div>
+      <p class="fine">Baseline numbers are taken from published reports and may use different training data, resolutions, prompting, and scoring protocols. * denotes values evaluated by the authors where no reported number was available. A dash denotes an unavailable value.</p>
+    </details>
+  </div>
+</section>
+
+<!-- ======================= EXAMPLES (paper Sec. 5.4) ======================= -->
+<section id="examples">
+  <div class="col reveal">
+    <div class="eyebrow">Examples</div>
+    <h2>Reading dense pages through discrete codes</h2>
+    <p>Qualitative examples of the 8B understanding model (the frozen dNaViT-G16 tokenizer with Qwen3-8B) on challenging visual inputs: dense full-page documents in English and Chinese, cursive handwriting, an engineering drawing, and diagram-grounded reasoning. Responses are reproduced verbatim, including the model's own errors. Long transcriptions are truncated at a paragraph boundary, and where the model produces an explicit reasoning trace, only the final response is shown.</p>
+  </div>
+  <div class="wide reveal">
+    <div class="qv" id="qv">
+      <div class="qv-tabs" role="tablist" aria-label="Qualitative examples"></div>
+      <div class="qv-card">
+        <div class="qv-media">
+          <div class="qv-imgwrap"><img class="qv-img" alt="" data-zoom><div class="qv-lens" aria-hidden="true"></div></div>
+          <div class="qv-hint">Hover to magnify · click to enlarge</div>
+        </div>
+        <div class="qv-text" tabindex="0">
+          <div class="qv-title"></div>
+          <div class="qv-q"><span class="qv-tag">Question</span><div class="qv-body"></div></div>
+          <div class="qv-a"><span class="qv-tag">dNaViT-8B</span><div class="qv-body"></div></div>
+        </div>
+      </div>
+      <p class="qv-cap"></p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= RECONSTRUCTION (assets/js/recon.js) ======================= -->
+<section id="recon">
+  <div class="col reveal">
+    <div class="eyebrow">Reconstruction</div>
+    <h2>Same codes, sharper pixels</h2>
+    <p>With visual representation and input resolution fixed, the ViT pixel decoder reliably preserves layout, color, and semantics but over-smooths high-frequency detail. The Refiner, conditioned on the same codes, recovers sharper letter contours and textures, which shows the codes carry more information than direct pixel decoding recovers.</p>
+  </div>
+  <div class="wide">
+    <div class="rf-bar reveal">
+      <div class="ctl"><span class="ctl-l">Left</span><div class="seg" id="rf-l" aria-label="Left image"><button type="button" data-v="orig" aria-pressed="false">Original</button><button type="button" data-v="g16" aria-pressed="true">Pixel G16</button><button type="button" data-v="g64" aria-pressed="false">Pixel G64</button><button type="button" data-v="rf1" aria-pressed="false">Refiner</button></div></div>
+      <div class="ctl"><span class="ctl-l">Right</span><div class="seg" id="rf-r" aria-label="Right image"><button type="button" data-v="orig" aria-pressed="false">Original</button><button type="button" data-v="g16" aria-pressed="false">Pixel G16</button><button type="button" data-v="g64" aria-pressed="false">Pixel G64</button><button type="button" data-v="rf1" aria-pressed="true">Refiner</button></div></div>
+      <div class="ctl"><span class="ctl-l">Zoom</span><div class="seg" id="rf-zoom" aria-label="Zoom"><button type="button" data-v="1" aria-pressed="true">1×</button><button type="button" data-v="2" aria-pressed="false">2×</button></div></div>
+      <span class="rf-hint">Drag the divider on any image</span>
+    </div>
+    <div class="rf-grid reveal" id="rf-grid"></div>
+  </div>
+
+  <div class="col reveal">
+    <figure>
+      <div class="frame"><img src="assets/fig/recon_compare_s.jpg" alt="Qualitative reconstruction comparison between continuous and discrete tokenizers at the same input resolution" loading="lazy" data-zoom></div>
+      <figcaption><b>Figure 8. Qualitative reconstruction comparison at the same input resolution.</b> <i>f</i> denotes the spatial downsampling factor. Continuous and Discrete denote unquantized latent representations and quantized codes, respectively; G and R specify the number of quantization groups and refinement steps. Click to enlarge.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ======================= GALLERY ======================= -->
+<section id="gallery">
+  <div class="col reveal">
+    <div class="eyebrow">Gallery</div>
+    <h2>Generated with dNaViT-8B</h2>
+    <p>A selection of images generated by dNaViT-8B from text prompts. Tiles are cropped for layout; click any image to view it in full.</p>
+  </div>
+  <div class="wide reveal">
+    <div class="gallery" id="gallery-grid"></div>
+      </div>
+</section>
+
+<!-- ======================= CITATION ======================= -->
+<section id="citation">
+  <div class="col reveal">
+    <div class="eyebrow">Citation</div>
+    <h2>BibTeX</h2>
+    <div class="bib">
+      <button class="btn sm" id="copy" type="button">Copy</button>
+<pre id="bibtex">@article{dnavit2026,
+  title   = {dNaViT: Discrete Codes are General-Purpose Visual Representations},
+  author  = {{Meituan LongCat Team}},
+  journal = {arXiv preprint},
+  year    = {2026}
+}</pre>
+    </div>
+    <h3>Contributors</h3>
+    <p class="contrib">Xiaotong Li<sup>*</sup>, Zhengrong Yue<sup>*</sup>, Xu Huang<sup>*</sup>, Jialv Zou<sup>*</sup>, Minhao Jing, Wenhao Yan, Haodong Li, Hai Huang, Bo Zhao, Yan Feng, Peng Pei, Xunliang Cai<br><span class="muted" style="font-size:13px"><sup>*</sup>Equal contribution. Correspondence: <a href="mailto:lixiaotong.edu@gmail.com">lixiaotong.edu@gmail.com</a></span></p>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wide">
+    <span>dNaViT · Meituan LongCat Team · 2026</span>
+    <a href="#top">Back to top ↑</a>
+  </div>
+</footer>
+
+<div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Enlarged figure"><button class="btn sm x" type="button">Close</button><img alt=""></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script>
+/* Links: an empty value renders a disabled "Soon" button. */
+var LINKS = {
+  paper: "",
+  code: "https://github.com/meituan-longcat/LongCat-Next",
+  hf: "https://huggingface.co/meituan-longcat/LongCat-Next"
+};
+
+(function () {
+  'use strict';
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var motion = document.documentElement.classList.contains('motion');
+  function h(tag, cls, html, parent) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; if (parent) parent.appendChild(e); return e; }
+
+  /* ---------- links ---------- */
+  $$('[data-link]').forEach(function (a) {
+    var url = LINKS[a.getAttribute('data-link')];
+    if (url) { a.href = url; a.target = '_blank'; a.rel = 'noopener'; return; }
+    a.setAttribute('aria-disabled', 'true'); a.setAttribute('role', 'link');
+    h('span', 'soon', 'Soon', a);
+  });
+
+  /* ---------- KaTeX ---------- */
+  function tex() {
+    if (!window.katex) return;
+    $$('.tex').forEach(function (e) { try { katex.render(e.textContent, e, { throwOnError: false }); } catch (x) { } });
+    $$('.texd').forEach(function (e) { try { katex.render(e.textContent, e, { throwOnError: false, displayMode: true }); } catch (x) { } });
+  }
+  if (window.katex) tex(); else window.addEventListener('load', tex);
+
+  /* ---------- nav: active section ---------- */
+  var links = $$('.nav-menu a'), secs = $$('main > section');
+  function activeNow() {
+    var y = window.innerHeight * 0.4, id = '';
+    secs.forEach(function (s) { var r = s.getBoundingClientRect(); if (r.top <= y && r.bottom > y) id = s.id; });
+    links.forEach(function (l) { l.classList.toggle('is-active', l.getAttribute('href') === '#' + id); });
+  }
+  window.addEventListener('scroll', activeNow, { passive: true }); activeNow();
+
+  /* ---------- reveal + counters ---------- */
+  function countUp(el) {
+    var to = parseFloat(el.getAttribute('data-count')), dec = +el.getAttribute('data-dec') || 0, f = el.getAttribute('data-fmt');
+    var small = el.querySelector('small'), unit = small ? small.outerHTML : '';
+    var t0 = null, D = 1400;
+    function fmt(v) { return (f === 'f' ? 'f = ' + Math.round(v) : v.toFixed(dec)) + unit; }
+    if (!motion) { el.innerHTML = fmt(to); return; }
+    function tick(t) { if (!t0) t0 = t; var p = Math.min(1, (t - t0) / D), e = 1 - Math.pow(1 - p, 4); el.innerHTML = fmt(to * e); if (p < 1) requestAnimationFrame(tick); }
+    requestAnimationFrame(tick);
+  }
+  var revealIO = 'IntersectionObserver' in window ? new IntersectionObserver(function (es) {
+    es.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      e.target.classList.add('is-in'); revealIO.unobserve(e.target);
+      if (e.target.id === 'stats') $$('[data-count]', e.target).forEach(countUp);
+      if (e.target.id === 'panels') animateBars();
+    });
+  }, { rootMargin: '0px 0px -10% 0px' }) : null;
+  $$('.reveal').forEach(function (el, i) { if (revealIO) revealIO.observe(el); else el.classList.add('is-in'); });
+  if (revealIO) { revealIO.observe($('#stats')); } else { $$('[data-count]').forEach(countUp); }
+
+  /* ---------- results ---------- */
+  // t: m = dNaViT, d = discrete, c = continuous, p = proprietary
+  var R = {
+    und: { note: 'dNaViT-8B pairs the frozen dNaViT-G16 tokenizer with Qwen3-8B. * evaluated by the authors. Model-level comparison; training data and protocols differ.', panels: [
+      { t: 'MMMU', dec: 1, rows: [['dNaViT-8B', 'm', 70.7], ['InternVL3.5-8B', 'c', 73.4], ['Qwen3-VL-8B', 'c', 69.6], ['Kelix-8B', 'd', 54.1], ['LLaDA2.0-Uni', 'd', 50.1], ['UniAR-8B', 'd', 44.3]] },
+      { t: 'MathVista', dec: 1, rows: [['dNaViT-8B', 'm', 79.0], ['InternVL3.5-8B', 'c', 78.4], ['Qwen3-VL-8B', 'c', 77.2], ['Kelix-8B', 'd', 76.5], ['LLaDA2.0-Uni', 'd', 68.1], ['UniAR-8B', 'd', 50.8, '*']] },
+      { t: 'MathVision', dec: 1, rows: [['dNaViT-8B', 'm', 56.5], ['InternVL3.5-8B', 'c', 56.8], ['Qwen3-VL-8B', 'c', 53.9], ['LLaDA2.0-Uni', 'd', 26.7], ['Emu3-Chat-8B', 'd', 15.6, '*']] },
+      { t: 'OCRBench', max: 1000, rows: [['dNaViT-8B', 'm', 885], ['Qwen3-VL-8B', 'c', 896], ['InternVL3-8B', 'c', 880], ['Kelix-8B', 'd', 867], ['UniAR-8B', 'd', 833], ['LLaDA2.0-Uni', 'd', 757]] },
+      { t: 'DocVQA', dec: 1, rows: [['dNaViT-8B', 'm', 96.2], ['Qwen3-VL-8B', 'c', 96.1], ['Qwen2.5-VL-7B', 'c', 95.7], ['UniAR-8B', 'd', 91.4], ['LLaDA2.0-Uni', 'd', 89.5], ['ViQ-7B', 'd', 88.9]] },
+      { t: 'CharXiv (RQ)', dec: 1, rows: [['dNaViT-8B', 'm', 51.0], ['Qwen3-VL-8B', 'c', 46.4], ['InternVL3.5-8B', 'c', 44.4], ['Qwen2.5-VL-7B', 'c', 42.5], ['UniAR-8B', 'd', 26.8, '*'], ['Emu3-Chat-8B', 'd', 14.1, '*']] }
+    ] },
+    gen: { note: 'dNaViT-8B generates with the dNaViT-G16-R tokenizer at 32× per-axis compression. GEdit-Bench uses the English full set; overall is the benchmark-reported score.', panels: [
+      { t: 'GenEval2 GM', dec: 1, rows: [['dNaViT-8B', 'm', 49.5], ['Nano Banana', 'p', 44.6], ['SenseNova-U1-8B', 'c', 40.5], ['Qwen-Image', 'c', 33.8], ['Z-Image', 'c', 31.8], ['Emu3.5', 'd', 25.4]] },
+      { t: 'Qwen-Image-Bench', dec: 2, rows: [['GPT Image 2', 'p', 64.69], ['GPT Image 1', 'p', 54.07], ['dNaViT-8B', 'm', 52.17], ['Qwen-Image-2512', 'c', 52.06], ['Emu3.5', 'd', 49.89], ['GLM-Image', 'd', 48.19]] },
+      { t: 'SpatialGenEval', max: 1, dec: 2, rows: [['SenseNova-U1-8B', 'c', 0.72], ['dNaViT-8B', 'm', 0.68], ['Seedream 4.0', 'p', 0.63], ['Nano Banana', 'p', 0.62], ['Qwen-Image', 'c', 0.61], ['Emu3.5', 'd', 0.57]] },
+      { t: 'LongText-Bench (CN)', max: 1, dec: 2, rows: [['Seedream 4.5', 'p', 0.99], ['GLM-Image', 'd', 0.98], ['Qwen-Image-2512', 'c', 0.97], ['dNaViT-8B', 'm', 0.94], ['Z-Image', 'c', 0.94], ['Emu3.5', 'd', 0.93]] },
+      { t: 'GEdit-Bench overall', max: 10, dec: 2, rows: [['Emu3.5', 'd', 7.59], ['Qwen-Image-Edit', 'c', 7.56], ['GPT-Image-1 [High]', 'p', 7.53], ['dNaViT-8B', 'm', 7.30], ['Gemini 2.5 Flash Image', 'p', 7.10], ['Step1X-Edit', 'c', 6.97]] },
+      { t: 'GEdit-Bench SC', max: 10, dec: 2, rows: [['Emu3.5', 'd', 8.11], ['Qwen-Image-Edit', 'c', 8.00], ['GPT-Image-1 [High]', 'p', 7.85], ['dNaViT-8B', 'm', 7.41], ['Gemini 2.5 Flash Image', 'p', 7.41], ['BAGEL', 'c', 7.36]] }
+    ] },
+    rec: { note: 'All dNaViT variants use f = 32; the f column of each baseline is shown in its name. Baseline numbers follow source-specific protocols and are not rate-matched. On TokBench, dNaViT-G16 and G64 differ in training configuration and duration.', panels: [
+      { t: 'ImageNet PSNR @ 256²', small: 'dB', dec: 2, max: 34, rows: [['dNaViT-G64 · f32', 'm', 25.41], ['BitDance · f32', 'd', 25.30], ['DC-SAE · f32', 'c', 23.13], ['UniLiP · f32', 'c', 22.99], ['Open-MAGVIT2 · f16', 'd', 22.70], ['LlamaGen · f16', 'd', 20.65]] },
+      { t: 'ImageNet PSNR by resolution', small: 'dB', dec: 2, max: 34, rows: [['dNaViT-G64 @1024²', 'm', 32.90], ['dNaViT-G64 @512²', 'm', 28.12], ['dNaViT-G64 @256²', 'm', 25.41], ['dNaViT-G16 @1024²', 'd', 28.93], ['dNaViT-G16 @512²', 'd', 25.47], ['dNaViT-G16 @256²', 'd', 22.82]] },
+      { t: 'TokBench T-ACC @ 1024²', small: '%', dec: 2, rows: [['O-MAGVIT2 · f8', 'd', 69.68], ['LlamaGen · f8', 'd', 63.89], ['dNaViT-G64 · f32', 'm', 63.08], ['DC-AE · f32', 'c', 52.14], ['UniTok · f16', 'd', 49.70], ['VAR · f16', 'd', 38.36]] },
+      { t: 'TokBench F-Sim @ 1024²', max: 1, dec: 2, rows: [['O-MAGVIT2 · f8', 'd', 0.74], ['dNaViT-G64 · f32', 'm', 0.67], ['LlamaGen · f8', 'd', 0.67], ['UniTok · f16', 'd', 0.53], ['DC-AE · f32', 'c', 0.50], ['VAR · f16', 'd', 0.40]] }
+    ] },
+    cls: { note: 'Linear probe on frozen 16×16 representations, trained on ImageNet-1K only; other columns are direct transfer. Continuous dNaViT is the feature before quantization.', panels: [
+      { t: 'ImageNet-1K', small: 'top-1 %', dec: 2, rows: [['QwenViT (continuous)', 'c', 80.45], ['dNaViT-G16 (continuous)', 'c', 80.40], ['dNaViT-G16', 'm', 79.47], ['UniTok', 'd', 78.56], ['UniAR', 'd', 66.54], ['TokenFlow', 'd', 48.32]] },
+      { t: 'ImageNet-A', small: 'top-1 %', dec: 2, rows: [['QwenViT (continuous)', 'c', 60.13], ['dNaViT-G16', 'm', 56.35], ['UniTok', 'd', 47.81], ['InternViT', 'c', 30.23], ['UniAR', 'd', 14.52], ['TokenFlow', 'd', 6.88]] },
+      { t: 'ImageNet-V2', small: 'top-1 %', dec: 2, rows: [['QwenViT (continuous)', 'c', 70.18], ['dNaViT-G16', 'm', 69.81], ['UniTok', 'd', 68.18], ['InternViT', 'c', 65.68], ['UniAR', 'd', 54.11], ['TokenFlow', 'd', 37.93]] },
+      { t: 'ObjectNet', small: 'top-1 %', dec: 2, rows: [['UniTok', 'd', 60.53], ['dNaViT-G16', 'm', 59.79], ['QwenViT (continuous)', 'c', 56.48], ['InternViT', 'c', 46.36], ['UniAR', 'd', 29.16], ['TokenFlow', 'd', 15.89]] }
+    ] }
+  };
+  var panels = $('#panels'), rnote = $('#rnote'), barsReady = false;
+  function renderPanels(key) {
+    var G = R[key]; panels.innerHTML = '';
+    G.panels.forEach(function (P) {
+      var el = h('div', 'panel', null, panels);
+      h('h5', null, P.t + (P.small ? ' <small>' + P.small + '</small>' : ''), el);
+      var max = P.max || Math.max.apply(null, P.rows.map(function (r) { return r[2]; })) * 1.08;
+      if (!P.max && max <= 100 && max > 85) max = 100;
+      P.rows.slice().sort(function (a, b) { return b[2] - a[2] || (a[1] === 'm' ? -1 : b[1] === 'm' ? 1 : 0); }).forEach(function (r) {
+        var row = h('div', 'brow' + (r[1] === 'm' ? ' me' : ''), null, el);
+        var mark = r[1] === 'c' ? 'c' : r[1] === 'p' ? 'p' : '';
+        h('span', 'nm', '<i class="' + mark + '"></i>' + r[0], row).title = r[0];
+        var bt = h('span', 'bt', '<b></b>', row);
+        $('b', bt).dataset.w = (r[2] / max * 100).toFixed(2);
+        h('span', 'v', (P.dec != null ? r[2].toFixed(P.dec) : r[2]) + (r[3] || ''), row);
+      });
+    });
+    rnote.textContent = G.note;
+    if (barsReady) setTimeout(animateBars, 30);
+  }
+  function animateBars() { barsReady = true; $$('.bt b', panels).forEach(function (b, i) { b.style.transitionDelay = motion ? (i % 6) * 40 + 'ms' : '0ms'; b.style.width = b.dataset.w + '%'; }); }
+  $$('#rtabs button').forEach(function (b) { b.addEventListener('click', function () { $$('#rtabs button').forEach(function (o) { o.setAttribute('aria-pressed', o === b); }); renderPanels(b.dataset.r); }); });
+  renderPanels('und');
+  if (revealIO) revealIO.observe(panels); else animateBars();
+
+  /* ---------- full tables ---------- */
+  var T = [
+    { title: 'STEM reasoning and general multimodal understanding', head: ['Method', 'MMMU', 'MMMU-Pro', 'MathVista', 'MathVision', 'RealWorldQA', 'MMStar'], body: [
+      ['#Continuous'],
+      ['LLaVA-OV-1.5-8B', 55.4, 31.3, 69.6, 25.6, 68.1, 67.7], ['LLaVA-OV-2-8B', '–', '–', '–', '–', 69.7, 64.8], ['InternVL3-8B', 62.7, '–', 71.6, 29.3, 70.8, 68.2], ['InternVL3.5-8B', 73.4, '–', 78.4, 56.8, 67.5, 69.3], ['Kimi-VL-A3B', 57.0, 36.0, 68.7, 21.4, 68.1, 61.3], ['MiMo-VL-7B-2508', 63.1, '–', '–', '–', '–', '–'], ['BAGEL-7B', 55.3, '–', 73.1, '–', '–', '–'], ['Show-o2-7B', 48.9, '–', '–', '–', '–', 56.6], ['Molmo2-8B', 53.0, '–', 58.9, '–', 77.6, '–'], ['Nemotron-VL-12B', 55.3, '–', 69.0, 31.5, 76.2, 65.9], ['Eagle2.5-8B', 55.8, '–', 67.8, '–', 76.7, 66.2], ['Phi-4-multimodal', 55.1, 38.5, 62.4, '–', '–', '–'], ['PLM-8B', 46.1, '–', '–', '–', 75.0, '–'], ['Qwen2.5-VL-7B', 58.6, 38.3, 68.2, 25.1, '–', 63.9], ['Qwen3-VL-8B', 69.6, 55.9, 77.2, 53.9, 71.5, 70.9],
+      ['#Discrete'],
+      ['Emu3-Chat-8B', 31.6, '–', '47.6*', '15.6*', 57.4, '46.5*'], ['Tar-7B', 39.0, '–', '–', '–', '–', '–'], ['ViQ-7B', 49.1, '–', '–', '–', '–', 54.2], ['UniAR-8B', 44.3, '22.7*', '50.8*', '–', 68.5, '56.7*'], ['Kelix-8B', 54.1, '–', 76.5, '–', 72.1, '–'], ['LLaDA2.0-Uni', 50.1, 34.0, 68.1, 26.7, 66.7, 64.1],
+      ['!dNaViT-8B', 70.7, 44.5, 79.0, 56.5, 72.3, 66.7]] },
+    { title: 'OCR, document, and chart understanding', head: ['Method', 'OCRBench', 'OCRBench V2 (en/zh)', 'CharXiv (DQ/RQ)', 'DocVQA', 'InfoVQA', 'OmniDocBench (en/zh) ↓'], body: [
+      ['#Continuous'],
+      ['LLaVA-OV-1.5-8B', 829, '–', '70.9/–', 95.0, 78.4, '–'], ['LLaVA-OV-2-8B', 782, '–', '–', 95.2, 74.4, '–'], ['InternVL3-8B', 880, '–', '73.6/37.6', 92.7, 76.8, '–'], ['InternVL3.5-8B', 832, '–', '72.2/44.4', 92.3, 76.2, '–'], ['Kimi-VL-A3B', 867, '–', '–', '–', 83.2, '–'], ['MiMo-VL-7B-2508', 881, '–', '–', '–', '–', '–'], ['Molmo2-8B', '–', '–', '–', 93.2, 80.1, '–'], ['Nemotron-VL-12B', 856, '62.0/44.2', '76.5/41.7', 94.7, 79.4, '–'], ['Eagle2.5-8B', 869, '–', '–', 94.1, 80.4, '–'], ['Phi-4-multimodal', 844, '–', '–', 93.2, 72.7, '–'], ['PLM-8B', 870, '–', '–', 94.6, 80.9, '–'], ['Qwen2.5-VL-7B', 864, '56.3/57.2', '73.9/42.5', 95.7, 82.6, '0.31/0.40'], ['Qwen3-VL-8B', 896, '65.4/61.2', '83.0/46.4', 96.1, 83.1, '0.17/0.26'],
+      ['#Discrete'],
+      ['Emu3-Chat-8B', 687, '–', '36.8*/14.1*', 76.3, '42.7*', '–'], ['X-Omni-7B', 704, '–', '–', 88.6, '–', '–'], ['ViQ-7B', 711, '–', '–', 88.9, 55.3, '–'], ['UniAR-8B', 833, '43.0*/48.6*', '63.3*/26.8*', 91.4, '68.9*', '0.48*/0.43*'], ['Kelix-8B', 867, '–', '–', '–', '–', '–'], ['LLaDA2.0-Uni', 757, '–', '68.4/–', 89.5, 70.1, '–'],
+      ['!dNaViT-8B', 885, '57.6/60.1', '86.5/51.0', 96.2, 79.2, '0.17/0.22']] },
+    { title: 'Text-to-image generation', head: ['Model', 'Comp.', 'Params', 'GenEval2 GM', 'QwenImageBench', 'SpatialGenEval', 'LongText EN', 'LongText CN'], body: [
+      ['#Proprietary'],
+      ['GPT Image 1', '–', '–', '–', 54.07, 0.61, 0.96, 0.62], ['Seedream 4.0', '–', '–', '–', 56.21, 0.63, 0.92, 0.93], ['Seedream 4.5', '–', '–', '–', 56.78, '–', 0.99, 0.99], ['GPT Image 2', '–', '–', '–', 64.69, '–', 0.96, 0.98], ['Nano Banana', '–', '–', 44.6, '–', 0.62, 0.87, 0.33], ['Nano Banana 2.0', '–', '–', '–', 59.82, '–', 0.98, 0.95], ['Nano Banana Pro', '–', '–', '–', 59.45, '–', 0.98, 0.95],
+      ['#Diffusion'],
+      ['HiDream-I1-Full', '16×', '17B', '–', 43.08, '–', 0.54, 0.02], ['FLUX.1 [dev]', '16×', '12B', 18.3, 21.58, 0.57, 0.61, 0.01], ['BAGEL', '16×', '14B', 23.1, 42.04, 0.57, 0.37, 0.31], ['Z-Image', '16×', '6B', 31.8, 49.10, '–', 0.94, 0.94], ['Z-Image-Turbo', '–', '6B', 31.0, '–', 0.59, 0.92, 0.93], ['Qwen-Image', '16×', '20B', 33.8, 49.23, 0.61, 0.94, 0.95], ['Qwen-Image-2512', '–', '20B', 29.0, 52.06, 0.60, 0.96, 0.97], ['OmniGen2', '16×', '4B', 18.7, 40.70, 0.56, 0.56, 0.06], ['SANA-1.5', '32×', '4.8B', 17.5, 35.14, 0.54, 0.05, '–'], ['SenseNova-U1-8B', '–', '8B', 40.5, 49.02, 0.72, 0.95, 0.82],
+      ['#Autoregressive'],
+      ['Janus-Pro-7B', '16×', '7B', 4.6, 23.53, 0.51, 0.02, 0.01], ['GLM-Image', '16×', '16B', 22.2, 48.19, 0.58, 0.95, 0.98], ['Emu3.5', '16×', '34.1B', 25.4, 49.89, 0.57, 0.98, 0.93],
+      ['!dNaViT-8B', '32×', '8B', 49.5, 52.17, 0.68, 0.94, 0.94]] },
+    { title: 'Image editing on GEdit-Bench (English full set)', head: ['Model', 'Comp.', 'Params', 'SC ↑', 'PQ ↑', 'Overall ↑'], body: [
+      ['#Proprietary'],
+      ['Gemini 2.0', '–', '–', 6.73, 6.61, 6.32], ['Gemini 2.5 Flash Image', '–', '–', 7.41, 7.96, 7.10], ['GPT-Image-1 [High]', '–', '–', 7.85, 7.62, 7.53],
+      ['#Open'],
+      ['AnyEdit', '8×', '0.9B', 3.18, 5.82, 3.21], ['Instruct-Pix2Pix', '8×', '0.9B', 3.58, 5.49, 3.68], ['MagicBrush', '8×', '0.9B', 4.68, 5.66, 4.52], ['UniWorld-v1', '16×', '12B', 4.93, 7.43, 4.85], ['OmniGen', '16×', '3.8B', 5.96, 5.89, 5.06], ['FLUX.1 Kontext [Dev]', '16×', '12B', 6.52, 7.38, 6.00], ['OmniGen2', '16×', '4B', 7.16, 6.77, 6.41], ['BAGEL', '16×', '14B', 7.36, 6.83, 6.52], ['Step1X-Edit', '16×', '12B', 7.66, 7.35, 6.97], ['Qwen-Image-Edit', '16×', '20B', 8.00, 7.86, 7.56], ['Emu3.5', '16×', '34.1B', 8.11, 7.70, 7.59],
+      ['!dNaViT-8B', '32×', '8B', 7.41, 7.20, 7.30]] },
+    { title: 'ImageNet reconstruction across resolutions', head: ['Method', 'Resolution', 'f', 'Spatial positions', 'PSNR (dB) ↑', 'SSIM ↑'], body: [
+      ['#Continuous representations'],
+      ['SD-VAE 1.x / 2.x', '256²', 8, 1024, 23.54, 0.68], ['OmniTokenizer', '256²', 8, 1024, 26.74, 0.82], ['SD-VAE XL', '256²', 8, 1024, 27.37, 0.78], ['Qwen-Image', '256²', 8, 1024, 32.18, 0.90], ['SD-VAE 3', '256²', 8, 1024, 31.29, 0.87], ['Wan2.1', '256²', 8, 1024, 31.34, 0.89], ['FLUX-VAE', '256²', 8, 1024, 32.74, 0.92], ['Cosmos-CI', '256²', 16, 256, 25.07, 0.70], ['VA-VAE', '256²', 16, 256, 27.96, 0.79], ['Wan2.2', '256²', 16, 256, 31.25, 0.88], ['PAE-DINOv2 ‡', '256²', 16, 256, 27.28, '–'], ['DC-SAE', '256²', 32, 64, 23.13, '–'], ['UniLiP', '256²', 32, 64, 22.99, 0.75], ['UniLiP', '448²', 32, 196, 24.62, 0.79],
+      ['#Discrete representations'],
+      ['ARM', '256²', 16, 256, 19.60, '–'], ['Cosmos-DI', '256²', 16, 256, 19.98, 0.54], ['LlamaGen', '256²', 16, 256, 20.65, 0.54], ['Open-MAGVIT2', '256²', 16, 256, 22.70, 0.64], ['BSQ-ViT', '256²', 16, 256, 28.14, 0.81], ['BitDance', '256²', 16, 256, 24.90, 0.72], ['BitDance', '256²', 32, 64, 25.30, 0.74], ['Emu3.5', '512²', 16, 1024, 23.80, '–'],
+      ['!dNaViT-G16', '256²', 32, 64, 22.82, 0.64], ['!dNaViT-G64', '256²', 32, 64, 25.41, 0.76], ['!dNaViT-G16', '512²', 32, 256, 25.47, 0.71], ['!dNaViT-G64', '512²', 32, 256, 28.12, 0.81], ['!dNaViT-G16', '1024²', 32, 1024, 28.93, 0.81], ['!dNaViT-G64', '1024²', 32, 1024, 32.90, 0.91]] },
+    { title: 'Fine-grained reconstruction on TokBench', head: ['Method', 'f', 'T-ACC @512', 'T-NED @512', 'F-Sim @512', 'T-ACC @1024', 'T-NED @1024', 'F-Sim @1024'], body: [
+      ['#Continuous autoencoders'],
+      ['DC-AE', 32, 38.25, 56.22, 0.39, 52.14, 68.02, 0.50], ['VA-VAE', 16, 53.30, 69.65, 0.57, 62.84, 77.21, 0.69], ['SD-XL', 8, 56.86, 72.55, 0.55, 67.84, 81.15, 0.70], ['SD-3.5', 8, 81.84, 90.30, 0.81, 89.71, 95.05, 0.93], ['FLUX.1-dev', 8, 87.64, 93.86, 0.86, 93.09, 96.96, 0.96],
+      ['#Discrete tokenizers'],
+      ['VQGAN', 16, 6.12, 17.32, 0.19, 15.00, 28.80, 0.25], ['Chameleon', 16, 11.55, 26.80, 0.28, 23.52, 40.39, 0.36], ['LlamaGen', 16, 15.01, 30.44, 0.25, 27.19, 43.58, 0.33], ['VAR', 16, 29.31, 50.00, 0.32, 38.36, 59.25, 0.40], ['TokenFlow', 16, 17.40, 35.49, 0.24, 29.30, 48.09, 0.31], ['O-MAGVIT2', 16, 21.65, 39.63, 0.31, 34.74, 52.03, 0.40], ['O-MAGVIT2 (pretrain)', 16, 27.33, 47.28, 0.31, 39.40, 58.95, 0.40], ['UniTok', 16, 50.10, 71.08, 0.44, 49.70, 71.59, 0.53], ['OmniTokenizer', 8, 42.48, 60.70, 0.50, 53.48, 70.02, 0.61], ['LlamaGen', 8, 52.56, 68.99, 0.53, 63.89, 78.24, 0.67], ['O-MAGVIT2', 8, 60.56, 76.00, 0.61, 69.68, 83.12, 0.74],
+      ['!dNaViT-G16', 32, 33.58, 52.43, 0.34, 45.05, 62.75, 0.41], ['!dNaViT-G64', 32, 51.69, 68.72, 0.54, 63.08, 78.27, 0.67]] },
+    { title: 'Image classification (top-1 %, linear probe on ImageNet-1K, direct transfer elsewhere)', head: ['Method', 'f', 'Latent', 'IN-1K', 'IN-A', 'IN-R', 'IN-V2', 'IN-Sketch', 'ObjectNet'], body: [
+      ['#Continuous'],
+      ['QwenViT', 32, '16×16', 80.45, 60.13, 65.00, 70.18, 46.57, 56.48], ['InternViT', 28, '16×16', 76.19, 30.23, 59.98, 65.68, 35.77, 46.36], ['MoonViT', 28, '16×16', 75.40, 23.96, 49.24, 63.34, 34.88, 45.46], ['!dNaViT-G16 †', 32, '16×16', 80.40, 60.25, 65.19, 70.18, 46.56, 56.48],
+      ['#Discrete'],
+      ['UniAR', 32, '16×16', 66.54, 14.52, 36.13, 54.11, 15.40, 29.16], ['UniTok', 16, '16×16', 78.56, 47.81, 71.10, 68.18, 51.03, 60.53], ['TokenFlow', 16, '16×16', 48.32, 6.88, 24.81, 37.93, 15.35, 15.89], ['Emu3.5', 16, '16×16', 8.39, 1.16, 3.08, 5.87, 0.77, 2.71],
+      ['!dNaViT-G16', 32, '16×16', 79.47, 56.35, 68.09, 69.81, 45.02, 59.79]], foot: '† continuous dNaViT features before quantization.' }
+  ];
+  var tw = $('#tables');
+  // per-column decimals, so 57.0 does not print as 57 (integer-only columns such as f stay integers)
+  function decOf(v) { var m = String(v).match(/\.(\d+)/); return m ? m[1].length : 0; }
+  T.forEach(function (t) {
+    var colDec = t.head.map(function (_, i) { var d = 0; t.body.forEach(function (r) { if (typeof r[i] === 'number') d = Math.max(d, decOf(r[i])); }); return d; });
+    var fmtCell = function (v, i) { return typeof v === 'number' ? v.toFixed(colDec[i]) : v; };
+    h('div', 'tbl-title', t.title, tw);
+    var wrap = h('div', 'tbl-wrap', null, tw), tb = h('table', null, null, wrap);
+    var th = h('thead', null, '<tr>' + t.head.map(function (x) { return '<th>' + x + '</th>'; }).join('') + '</tr>', tb);
+    var body = h('tbody', null, null, tb);
+    t.body.forEach(function (r) {
+      var first = String(r[0]);
+      if (first[0] === '#') { h('tr', 'grp', '<td colspan="' + t.head.length + '">' + first.slice(1) + '</td>', body); return; }
+      var me = first[0] === '!';
+      h('tr', me ? 'me' : null, r.map(function (v, i) { return '<td>' + (i === 0 && me ? first.slice(1) : fmtCell(v, i)) + '</td>'; }).join(''), body);
+    });
+    if (t.foot) h('p', 'fine', t.foot, tw).style.marginTop = '8px';
+  });
+
+  /* ---------- gallery: masonry columns of uneven tiles, flush at top and bottom ---------- */
+  (function () {
+    var gg = $('#gallery-grid'); if (!gg) return;
+    // [file number, tile aspect (w/h), object-position]; text-heavy images (10, 11, 12) sit in the first rows.
+    // Each column's tiles are stretched slightly so every column ends at the same height; the lightbox always shows the full image.
+    var G = [[10, 1, '50% 0%'], [1, .8], [11, 1, '50% 0%'], [13, 4 / 3], [12, 1], [2, 1], [3, 1], [16, 1.25], [4, 2 / 3], [5, .8, '50% 30%'],
+             [17, 4 / 3], [6, 1.6], [7, .75], [14, 1], [8, 2 / 3, '40% 50%'], [9, 1.25, '50% 40%']];
+    var GAP = 12;
+    var EX = '<svg viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>';
+    var tiles = G.map(function (g) {
+      var src = 'assets/gen/g' + (g[0] < 10 ? '0' : '') + g[0] + '.jpg';
+      var f = document.createElement('figure'); f.className = 'g-tile reveal';
+      f.innerHTML = '<img alt="Image generated by dNaViT-8B" loading="lazy" data-zoom><span class="g-ex" aria-hidden="true">' + EX + '</span>';
+      var im = f.firstChild; im.src = src; im.setAttribute('data-full', src); if (g[2]) im.style.objectPosition = g[2];
+      return { el: f, ar: g[1] };
+    });
+    var n = 0, groups = [], cols = [];
+    function ncols() { var w = gg.clientWidth; return w < 520 ? 2 : w < 860 ? 3 : 4; }
+    function build() {
+      var k = ncols();
+      if (k !== n) {
+        n = k; gg.innerHTML = ''; cols = []; groups = [];
+        var hgt = [];
+        for (var c = 0; c < k; c++) { var col = document.createElement('div'); col.className = 'g-col'; gg.appendChild(col); cols.push(col); groups.push([]); hgt.push(0); }
+        tiles.forEach(function (t) {   // row-major fill into the shortest column (heights in column widths)
+          var c = hgt.indexOf(Math.min.apply(null, hgt));
+          cols[c].appendChild(t.el); groups[c].push(t); hgt[c] += 1 / t.ar;
+        });
+        tiles.forEach(function (t) { if (revealIO && !t.el.classList.contains('is-in')) revealIO.observe(t.el); else t.el.classList.add('is-in'); });
+      }
+      fit();
+    }
+    function fit() {   // stretch each column's tiles so all columns share one height
+      var w = cols[0].clientWidth; if (!w) return;
+      var natural = groups.map(function (g) { return g.reduce(function (s, t) { return s + w / t.ar; }, 0) + GAP * (g.length - 1); });
+      var H = natural.reduce(function (s, v) { return s + v; }, 0) / natural.length;
+      groups.forEach(function (g, c) {
+        var img = natural[c] - GAP * (g.length - 1), scale = (H - GAP * (g.length - 1)) / img, used = 0;
+        g.forEach(function (t, i) {
+          var h = i === g.length - 1 ? H - GAP * (g.length - 1) - used : Math.round(w / t.ar * scale);
+          used += h; t.el.style.height = h + 'px';
+        });
+      });
+    }
+    build();
+    window.addEventListener('resize', build);
+  })();
+
+  /* ---------- lightbox ---------- */
+  var lb = $('#lb'), lbi = $('img', lb);
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (t.matches && t.matches('img[data-zoom]')) { lbi.src = t.getAttribute('data-full') || t.currentSrc || t.src; lbi.alt = t.alt; lb.classList.add('open'); document.body.style.overflow = 'hidden'; }
+  });
+  function closeLb() { lb.classList.remove('open'); document.body.style.overflow = ''; }
+  lb.addEventListener('click', closeLb);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeLb(); });
+
+  /* ---------- copy BibTeX ---------- */
+  $('#copy').addEventListener('click', function () {
+    var b = this, txt = $('#bibtex').textContent;
+    function done() { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1600); }
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(txt).then(done, fallback); else fallback();
+    function fallback() { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (x) { } ta.remove(); }
+  });
+})();
+</script>
+<script src="assets/js/hero.js?v=1109b"></script>
+<script src="assets/js/heroanim.js?v=1109"></script>
+<script src="assets/js/figdata.js"></script>
+<script src="assets/js/figanim.js"></script>
+<script src="assets/js/qual.js"></script>
+<script src="assets/js/qualview.js"></script>
+<script src="assets/js/recon.js?v=1109e"></script>
+</body>
+</html>
